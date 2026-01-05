@@ -18,7 +18,7 @@ EVENT_ID = "EVENT_B5vGL"
 # STREAMLIT SETUP
 # =========================
 st.set_page_config(page_title="LangSongXanh QR Tool", layout="wide")
-st.title("🎶 Làng Sóng Xanh – Login & Tạo QR ZaloPay")
+st.title("🎶 Làng Sóng Xanh – Login & Tạo QR Thanh Toán")
 
 st.markdown("""
 - Email dạng **gmail alias**
@@ -44,12 +44,25 @@ with col2:
 
 password = st.text_input("🔑 Mật khẩu (dùng chung)", type="password")
 
+# =========================
+# PAYMENT TYPE OPTION
+# =========================
+payment_type = st.radio(
+    "💳 Phương thức thanh toán",
+    options=[
+        ("zalopay", "ZaloPay"),
+        ("zalopay_vietqr", "Chuyển khoản ngân hàng (VietQR)")
+    ],
+    format_func=lambda x: x[1],
+    index=0
+)[0]
+
 start_btn = st.button("🚀 Login & Tạo QR")
 
 # =========================
 # FUNCTION: CREATE QR
 # =========================
-def create_vote_qr(session, access_token):
+def create_vote_qr(session, access_token, payment_type):
     url = f"{EVENT_API}/v1/tenants/{TENANT}/voting/{EVENT_ID}"
 
     headers = {
@@ -61,7 +74,7 @@ def create_vote_qr(session, access_token):
     }
 
     payload = {
-        "paymentType": "zalopay",
+        "paymentType": payment_type,
         "pointPackageId": "VND_LARGE_01",
         "productGroupId": "136PU",
         "productId": "xC7N",
@@ -92,6 +105,7 @@ if start_btn:
     ]
 
     st.info(f"📌 Tổng email: {len(emails)}")
+    st.info(f"💳 Phương thức thanh toán: **{payment_type}**")
 
     results = []
     progress = st.progress(0.0)
@@ -106,8 +120,9 @@ if start_btn:
         })
 
         try:
-            # CSRF
-            csrf = session.get(f"{BASE_WEB}/api/auth/csrf", timeout=10).json().get("csrfToken")
+            # Get CSRF
+            csrf_res = session.get(f"{BASE_WEB}/api/auth/csrf", timeout=10).json()
+            csrf = csrf_res.get("csrfToken")
             if not csrf:
                 raise Exception("Không lấy được CSRF")
 
@@ -130,12 +145,11 @@ if start_btn:
             # Get session
             sess = session.get(f"{BASE_WEB}/api/auth/session", timeout=10).json()
             access_token = sess.get("user", {}).get("accessToken")
-
             if not access_token:
                 raise Exception("Không có accessToken")
 
             # Create QR (1 lần)
-            order = create_vote_qr(session, access_token)
+            order = create_vote_qr(session, access_token, payment_type)
 
             qr_url = None
             if order.get("errorCode") == 0:
@@ -159,7 +173,7 @@ if start_btn:
     # =========================
     st.success("🎉 Hoàn tất")
 
-    st.subheader("📲 QR ZaloPay (mỗi email 1 QR)")
+    st.subheader("📲 QR Thanh Toán (mỗi email 1 QR)")
 
     for item in results:
         if item.get("qr"):
@@ -188,14 +202,14 @@ if start_btn:
     st.download_button(
         "⚡ TẢI TẤT CẢ QR (ZIP – NHANH NHẤT)",
         data=zip_buffer,
-        file_name="QR_ZaloPay.zip",
+        file_name="QR_Payment.zip",
         mime="application/zip"
     )
 
     st.markdown("""
     ---
     💡 **Cách dùng nhanh**
-    1. Tải ZIP
-    2. Mở ZIP → chọn nhiều ảnh
-    3. **Ctrl+C → Ctrl+V vào Zalo**
+    1. Tải ZIP  
+    2. Mở ZIP → chọn nhiều ảnh  
+    3. **Ctrl + C → Ctrl + V vào Zalo**
     """)

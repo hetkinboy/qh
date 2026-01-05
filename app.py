@@ -1,51 +1,103 @@
 import streamlit as st
 import requests
 import json
+import io
+import zipfile
 
-BASE_URL = "https://lansongxanh.1vote.vn"
+# =========================
+# CONFIG
+# =========================
+BASE_WEB = "https://lansongxanh.1vote.vn"
 CALLBACK_URL = "https://lansongxanh.1vote.vn/thi-sinh/yj3su/quang-hung-masterd-xC7N"
 
-st.set_page_config(page_title="LangSongXanh Login Tool", layout="wide")
+EVENT_API = "https://eventista-platform-api.1vote.vn"
+TENANT = "tx3aJc"
+EVENT_ID = "EVENT_B5vGL"
 
-st.title("🔐 LangSongXanh – Login & Session Collector")
+# =========================
+# STREAMLIT SETUP
+# =========================
+st.set_page_config(page_title="LangSongXanh QR Tool", layout="wide")
+st.title("🎶 Làng Sóng Xanh – Login & Tạo QR ZaloPay")
 
 st.markdown("""
-- Nhập **danh sách email (mỗi dòng 1 email)**
-- Mật khẩu dùng chung
-- Tool sẽ login và lấy **session cho từng email**
+- Email dạng **gmail alias**
+- **Mỗi email chỉ tạo 1 QR**
+- Tải **ZIP QR** để copy ảnh dán Zalo cho nhanh
 """)
 
 # =========================
 # INPUT
 # =========================
-emails_raw = st.text_area(
-    "📧 Danh sách email (mỗi dòng 1 email)",
-    height=200,
-    placeholder="email1@gmail.com\nemail2@gmail.com"
+st.subheader("📧 Tạo danh sách email")
+
+email_prefix = st.text_input(
+    "Email gốc (không gồm + số và @gmail.com)",
+    placeholder="mrtienkaza"
 )
 
-password = st.text_input("🔑 Mật khẩu", type="password")
+col1, col2 = st.columns(2)
+with col1:
+    start_num = st.number_input("Từ số", min_value=1, step=1, value=1)
+with col2:
+    end_num = st.number_input("Đến số", min_value=1, step=1, value=5)
 
-start_btn = st.button("🚀 Bắt đầu login & lấy session")
+password = st.text_input("🔑 Mật khẩu (dùng chung)", type="password")
+
+start_btn = st.button("🚀 Login & Tạo QR")
+
+# =========================
+# FUNCTION: CREATE QR
+# =========================
+def create_vote_qr(session, access_token):
+    url = f"{EVENT_API}/v1/tenants/{TENANT}/voting/{EVENT_ID}"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Origin": "https://lansongxanh.1vote.vn",
+        "Referer": "https://lansongxanh.1vote.vn/"
+    }
+
+    payload = {
+        "paymentType": "zalopay",
+        "pointPackageId": "VND_LARGE_01",
+        "productGroupId": "136PU",
+        "productId": "xC7N",
+        "source": {
+            "screen": "home",
+            "pointPackage": {
+                "id": "VND_LARGE_01",
+                "point": 10,
+                "amount": 3000
+            }
+        }
+    }
+
+    res = session.post(url, headers=headers, json=payload, timeout=15)
+    return res.json()
 
 # =========================
 # PROCESS
 # =========================
 if start_btn:
-    if not emails_raw.strip() or not password:
-        st.error("❌ Vui lòng nhập email và mật khẩu")
+    if not email_prefix or not password or start_num > end_num:
+        st.error("❌ Thiếu thông tin hoặc khoảng số không hợp lệ")
         st.stop()
 
-    emails = [e.strip() for e in emails_raw.splitlines() if e.strip()]
+    emails = [
+        f"{email_prefix}+{i}@gmail.com"
+        for i in range(int(start_num), int(end_num) + 1)
+    ]
+
     st.info(f"📌 Tổng email: {len(emails)}")
 
     results = []
-
-    progress = st.progress(0)
-    log_box = st.empty()
+    progress = st.progress(0.0)
 
     for idx, email in enumerate(emails, start=1):
-        log_box.info(f"🔄 Đang xử lý: {email}")
+        st.write(f"🔄 Đang xử lý: **{email}**")
 
         session = requests.Session()
         session.headers.update({
@@ -54,51 +106,50 @@ if start_btn:
         })
 
         try:
-            # 1️⃣ Get CSRF
-            csrf_res = session.get(f"{BASE_URL}/api/auth/csrf", timeout=10)
-            csrf_token = csrf_res.json().get("csrfToken")
+            # CSRF
+            csrf = session.get(f"{BASE_WEB}/api/auth/csrf", timeout=10).json().get("csrfToken")
+            if not csrf:
+                raise Exception("Không lấy được CSRF")
 
-            if not csrf_token:
-                raise Exception("Không lấy được csrfToken")
-
-            # 2️⃣ Login
-            login_data = {
-                "email": email,
-                "password": password,
-                "csrfToken": csrf_token,
-                "redirect": "false",
-                "callbackUrl": CALLBACK_URL,
-                "json": "true"
-            }
-
-            login_res = session.post(
-                f"{BASE_URL}/api/auth/callback/credentials",
-                data=login_data,
+            # Login
+            session.post(
+                f"{BASE_WEB}/api/auth/callback/credentials",
+                data={
+                    "email": email,
+                    "password": password,
+                    "csrfToken": csrf,
+                    "redirect": "false",
+                    "callbackUrl": CALLBACK_URL,
+                    "json": "true"
+                },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 allow_redirects=False,
                 timeout=10
             )
 
-            # 3️⃣ Get session
-            sess_res = session.get(f"{BASE_URL}/api/auth/session", timeout=10)
-            sess_json = sess_res.json()
+            # Get session
+            sess = session.get(f"{BASE_WEB}/api/auth/session", timeout=10).json()
+            access_token = sess.get("user", {}).get("accessToken")
 
-            if not sess_json:
-                status = "❌ Login thất bại"
-            else:
-                status = "✅ Login OK"
+            if not access_token:
+                raise Exception("Không có accessToken")
+
+            # Create QR (1 lần)
+            order = create_vote_qr(session, access_token)
+
+            qr_url = None
+            if order.get("errorCode") == 0:
+                qr_url = order["data"]["zalopayDynamicQr"]["qrCode"]
 
             results.append({
                 "email": email,
-                "status": status,
-                "session": sess_json
+                "qr": qr_url
             })
 
         except Exception as e:
             results.append({
                 "email": email,
-                "status": f"❌ Error: {e}",
-                "session": None
+                "error": str(e)
             })
 
         progress.progress(idx / len(emails))
@@ -108,20 +159,43 @@ if start_btn:
     # =========================
     st.success("🎉 Hoàn tất")
 
-    st.subheader("📦 Kết quả session")
-    st.json(results)
+    st.subheader("📲 QR ZaloPay (mỗi email 1 QR)")
+
+    for item in results:
+        if item.get("qr"):
+            st.markdown(f"**{item['email']}**")
+            st.image(item["qr"], width=220)
+        else:
+            st.warning(f"{item['email']} ❌ Không có QR")
+
+    # =========================
+    # ZIP DOWNLOAD
+    # =========================
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for item in results:
+            qr = item.get("qr")
+            email = item.get("email")
+            if not qr:
+                continue
+            img = requests.get(qr, timeout=10).content
+            filename = f"{email.replace('@', '_')}.png"
+            zipf.writestr(filename, img)
+
+    zip_buffer.seek(0)
 
     st.download_button(
-        "💾 Tải file session (JSON)",
-        data=json.dumps(results, indent=2, ensure_ascii=False),
-        file_name="sessions_langsongxanh.json",
-        mime="application/json"
+        "⚡ TẢI TẤT CẢ QR (ZIP – NHANH NHẤT)",
+        data=zip_buffer,
+        file_name="QR_ZaloPay.zip",
+        mime="application/zip"
     )
 
     st.markdown("""
     ---
-    ### 🔧 Gợi ý bước tiếp theo
-    - Gắn **API vote** vào từng session
-    - Dùng `session.cookies` để gọi API vote
-    - Có thể thêm delay / proxy / random UA
+    💡 **Cách dùng nhanh**
+    1. Tải ZIP
+    2. Mở ZIP → chọn nhiều ảnh
+    3. **Ctrl+C → Ctrl+V vào Zalo**
     """)

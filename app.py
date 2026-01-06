@@ -13,6 +13,7 @@ CALLBACK_URL = "https://lansongxanh.1vote.vn/thi-sinh/yj3su/quang-hung-masterd-x
 EVENT_API = "https://eventista-platform-api.1vote.vn"
 TENANT = "tx3aJc"
 EVENT_ID = "EVENT_B5vGL"
+PRODUCT_API = f"{EVENT_API}/v1/internal/tenants/{TENANT}/products?eventId={EVENT_ID}"
 
 # =========================
 # STREAMLIT SETUP
@@ -25,7 +26,65 @@ st.markdown("""
 - **Mỗi email chỉ tạo 1 QR**
 - Tải **ZIP QR** để copy ảnh dán Zalo cho nhanh
 """)
+if st.button("👀 Xem thông tin thí sinh"):
+    st.session_state["show_products"] = True
 
+@st.cache_data(ttl=60)
+def load_products():
+    res = requests.get(PRODUCT_API, timeout=10)
+    data = res.json()
+    return data.get("data", {}).get("products", [])
+# ======= HANDLE CLOSE FIRST =======
+if st.session_state.get("close_products"):
+    st.session_state["show_products"] = False
+    st.session_state["close_products"] = False
+    st.rerun()
+
+# ======= SHOW PRODUCTS =======
+if st.session_state.get("show_products"):
+    with st.expander("📊 Danh sách thí sinh – Làn Sóng Xanh", expanded=True):
+        products = load_products()
+
+        if not products:
+            st.warning("Không tải được danh sách thí sinh")
+        else:
+            products = sorted(
+                products,
+                key=lambda x: 0 if "Quang Hùng" in x["name"] else 1
+            )
+
+            for p in products:
+                is_quang_hung = "Quang Hùng" in p["name"]
+
+                col1, col2 = st.columns([1, 4])
+
+                with col1:
+                    st.image(p["avatar"], width=110)
+
+                with col2:
+                    if is_quang_hung:
+                        st.markdown(
+                            f"""
+                            🟢 **⭐ {p['name']} (ƯU TIÊN)**  
+                            **Product ID:** `{p['id']}`  
+                            **Group:** `{p['productGroupId']}`  
+                            **Điểm:** **{p['points']:,}**
+                            """
+                        )
+                    else:
+                        st.markdown(
+                            f"""
+                            **{p['name']}**  
+                            Product ID: `{p['id']}`  
+                            Điểm: **{p['points']:,}**
+                            """
+                        )
+
+                st.divider()
+
+        # 👉 nút đóng SET FLAG
+        if st.button("❌ Đóng danh sách", key="close_products_btn"):
+            st.session_state["close_products"] = True
 # =========================
 # INPUT
 # =========================
@@ -59,6 +118,7 @@ payment_type = st.radio(
 
 start_btn = st.button("🚀 Login & Tạo QR")
 
+
 # =========================
 # FUNCTION: CREATE QR
 # =========================
@@ -89,8 +149,7 @@ def create_vote_qr(session, access_token, payment_type):
     }
 
     res = session.post(url, headers=headers, json=payload, timeout=15)
-    return res.json()
-
+    return res.json() 
 # =========================
 # PROCESS
 # =========================
@@ -197,8 +256,7 @@ if start_btn:
             filename = f"{email.replace('@', '_')}.png"
             zipf.writestr(filename, img)
 
-    zip_buffer.seek(0)
-
+    zip_buffer.seek(0) 
     st.download_button(
         "⚡ TẢI TẤT CẢ QR (ZIP – NHANH NHẤT)",
         data=zip_buffer,

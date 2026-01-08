@@ -62,24 +62,28 @@ if st.session_state.get("show_products"):
                     st.image(p["avatar"], width=110)
 
                 with col2:
+                    points = p.get("points") 
                     if is_quang_hung:
                         st.markdown(
                             f"""
                             🟢 **⭐ {p['name']} (ƯU TIÊN)**  
                             **Product ID:** `{p['id']}`  
                             **Group:** `{p['productGroupId']}`  
-                            **Điểm:** **{p['points']:,}**
                             """
                         )
                     else:
                         st.markdown(
                             f"""
                             **{p['name']}**  
-                            Product ID: `{p['id']}`  
-                            Điểm: **{p['points']:,}**
+                            Product ID: `{p['id']}`
                             """
                         )
 
+# HIỂN THỊ ĐIỂM NẾU CÓ
+if points is not None:
+    st.markdown(f"**Điểm:** **{points:,}**")
+else:
+    st.markdown("**Điểm:** _đang ẩn / không khả dụng_")
                 st.divider()
 
         # 👉 nút đóng SET FLAG

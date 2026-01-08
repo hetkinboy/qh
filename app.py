@@ -79,11 +79,11 @@ if st.session_state.get("show_products"):
                             """
                         )
 
-# HIỂN THỊ ĐIỂM NẾU CÓ
-if points is not None:
-    st.markdown(f"**Điểm:** **{points:,}**")
-else:
-    st.markdown("**Điểm:** _đang ẩn / không khả dụng_")
+            # HIỂN THỊ ĐIỂM NẾU CÓ
+            if points is not None:
+                st.markdown(f"**Điểm:** **{points:,}**")
+            else:
+                st.markdown("**Điểm:** _đang ẩn / không khả dụng_")
                 st.divider()
 
         # 👉 nút đóng SET FLAG
